@@ -1,3 +1,7 @@
 *.pdb
 *.exe
 *.ilc
+*.ilk
+
+
+.vs/

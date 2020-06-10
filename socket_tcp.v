@@ -89,6 +89,31 @@ pub fn listen_tcp(port int) ?TcpListener {
 	}
 }
 
+pub fn (l TcpListener) accept() ?TcpConn {
+	addr := C.sockaddr_storage{}
+	unsafe {
+		C.memset(&addr, 0, sizeof(C.sockaddr_storage))
+	}
+	size := sizeof(C.sockaddr_storage)
+
+	// cast to correct type
+	sock_addr := &C.sockaddr(&addr)
+	new_handle := C.accept(l.sock.handle, sock_addr, &size)
+	
+	if new_handle == -1 {
+		return none
+	}
+
+	socket_error(new_handle)?
+
+	new_sock := TcpSocket {
+		handle: new_handle
+		family: l.sock.family
+		typ: l.sock.typ
+	}
+
+	return TcpConn{sock: new_sock}
+}
 pub fn (c TcpListener) close() ? {
 	c.sock.close()?
 	return none
@@ -127,6 +152,7 @@ fn new_socket(family SocketFamily, typ SocketType) ?TcpSocket {
 	s := TcpSocket {
 		handle: sockfd
 		typ: typ
+		family: family
 	}
 
 	s.set_option_bool(.reuse_addr, true)?
