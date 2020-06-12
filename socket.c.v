@@ -27,6 +27,11 @@ mut:
 	ai_next      voidptr
 }
 
+fn (info C.addrinfo) str() string {
+	// TODO
+	return ''
+}
+
 struct C.sockaddr_storage {
 }
 
@@ -49,8 +54,10 @@ fn C.getaddrinfo() int
 fn C.connect() int
 
 fn C.send() int
+fn C.sendto() int
 
 fn C.recv() int
+fn C.recvfrom() int
 
 fn C.shutdown() int
 
@@ -58,5 +65,6 @@ fn C.ntohs() int
 
 fn C.getsockname() int
 
+// defined in builtin
 // fn C.read() int
 // fn C.close() int

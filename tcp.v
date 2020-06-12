@@ -4,32 +4,9 @@ pub struct TcpConn {
 	sock TcpSocket
 }
 
-pub fn dial_tcp(address string, port int) ?TcpConn {
-	if port > u16(-1) {
-		return err_invalid_port
-	}
-
-	s := new_socket(.inet, .tcp)?
-
-	mut hints := C.addrinfo{}
-	hints.ai_family = s.family
-	hints.ai_socktype = s.typ
-	hints.ai_flags = C.AI_PASSIVE
-	hints.ai_protocol = 0
-	hints.ai_addrlen = 0
-	hints.ai_canonname = C.NULL
-	hints.ai_addr = C.NULL
-	hints.ai_next = C.NULL
-	info := &C.addrinfo(0)
-
-	sport := '$port'
-	info_res := C.getaddrinfo(address.str, sport.str, &hints, &info)
-
-	socket_error(info_res)?
-
-	res := C.connect(s.handle, info.ai_addr, info.ai_addrlen)
-
-	socket_error(res)?
+pub fn dial_tcp(address string) ?TcpConn {
+	s := new_tcp_socket()?
+	s.connect(address)?
 
 	return TcpConn {
 		sock: s
@@ -58,8 +35,8 @@ pub fn (c TcpConn) write(bytes []byte) ? {
 }
 
 // read blocks and attempts to read bytes up to the size of arr
-pub fn (c TcpConn) read(mut arr []byte) ?int {
-	return socket_error(C.recv(c.sock.handle, arr.data, arr.len, 0))
+pub fn (c TcpConn) read(mut buf []byte) ?int {
+	return socket_error(C.recv(c.sock.handle, buf.data, buf.len, 0))
 }
 
 pub struct TcpListener {
@@ -67,13 +44,13 @@ pub struct TcpListener {
 }
 
 pub fn listen_tcp(port int) ?TcpListener {
-	s := new_socket(.inet, .tcp)?
+	s := new_tcp_socket()?
 	if port > u16(-1) {
 		return err_invalid_port
 	}
 
 	mut addr := C.sockaddr_in{}
-	addr.sin_family = s.family
+	addr.sin_family = SocketFamily.inet
 	addr.sin_port = C.htons(port)
 	addr.sin_addr.s_addr = C.htonl(C.INADDR_ANY)
 	size := sizeof(C.sockaddr_in)
@@ -104,12 +81,8 @@ pub fn (l TcpListener) accept() ?TcpConn {
 		return none
 	}
 
-	socket_error(new_handle)?
-
 	new_sock := TcpSocket {
 		handle: new_handle
-		family: l.sock.family
-		typ: l.sock.typ
 	}
 
 	return TcpConn{sock: new_sock}
@@ -122,12 +95,24 @@ pub fn (c TcpListener) close() ? {
 struct TcpSocket {
 pub:
 	handle int
+}
 
-	family SocketFamily
-	typ SocketType
+fn new_tcp_socket() ?TcpSocket {
+	sockfd := C.socket(SocketFamily.inet, SocketType.tcp, 0)
+
+	if sockfd == -1 {
+		socket_error(sockfd)?
+	}
+
+	s := TcpSocket {
+		handle: sockfd
+	}
+	s.set_option_bool(.reuse_addr, true)?
+	return s
 }
 
 pub fn (s TcpSocket) set_option_bool(opt SocketOption, value bool) ? {
+	// TODO reenable when this `in` operation works again
 	// if opt !in opts_can_set {
 	// 	return err_option_not_settable
 	// }
@@ -141,25 +126,6 @@ pub fn (s TcpSocket) set_option_bool(opt SocketOption, value bool) ? {
 	return none
 }
 
-// new_socket creates a socket with a given family and type
-fn new_socket(family SocketFamily, typ SocketType) ?TcpSocket {
-	sockfd := socket_error(C.socket(family, typ, 0))?
-
-	if sockfd == -1 {
-		return err_new_socket_failed
-	}
-
-	s := TcpSocket {
-		handle: sockfd
-		typ: typ
-		family: family
-	}
-
-	s.set_option_bool(.reuse_addr, true)?
-
-	return s
-}
-
 fn (s TcpSocket) close() ? {
 	$if windows {
 		C.shutdown(s.handle, C.SD_BOTH)
@@ -168,6 +134,14 @@ fn (s TcpSocket) close() ? {
 		C.shutdown(s.handle, C.SHUT_RDWR)
 		socket_error(C.close(s.handle))?
 	}
+
+	return none
+}
+
+fn (s TcpSocket) connect(a string) ? {
+	addr := resolve_addr(a, .inet, .tcp)?
+
+	socket_error(C.connect(s.handle, addr.info.ai_addr, addr.info.ai_addrlen))?
 
 	return none
 }

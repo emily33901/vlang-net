@@ -30,7 +30,7 @@ fn echo_server(l net.TcpListener) ? {
 }
 
 fn echo() ? {
-	c := net.dial_tcp('127.0.0.1', 30000)?
+	c := net.dial_tcp('127.0.0.1:30000')?
 	defer { c.close()? }
 
 	data := 'Hello from emily33901.net!'
