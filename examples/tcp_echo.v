@@ -9,7 +9,7 @@ fn handle_conn(c net.TcpConn) {
 		read := c.read_into(buf) or {
 			match errcode {
 				// TODO: replace when constant eval bug fixed
-				net.err_read_timed_out_code {
+				9 {
 					continue
 				}
 				else {
