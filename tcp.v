@@ -1,7 +1,23 @@
 module net
 
+import time
+
+const (
+	no_deadline = time.Time{unix: 0}
+)
+
 pub struct TcpConn {
 	sock TcpSocket
+
+mut:
+	has_write_deadline bool
+	write_deadline time.Time
+
+	has_read_deadline bool
+	read_deadline time.Time
+
+	read_timeout time.Duration
+	write_timeout time.Duration
 }
 
 pub fn dial_tcp(address string) ?TcpConn {
@@ -10,6 +26,11 @@ pub fn dial_tcp(address string) ?TcpConn {
 
 	return TcpConn {
 		sock: s
+		
+		has_write_deadline: false
+		has_read_deadline: false
+		read_timeout: -1
+		write_timeout: -1
 	}
 }
 
@@ -34,9 +55,127 @@ pub fn (c TcpConn) write(bytes []byte) ? {
 	return none
 }
 
-// read blocks and attempts to read bytes up to the size of arr
-pub fn (c TcpConn) read(mut buf []byte) ?int {
-	return socket_error(C.recv(c.sock.handle, buf.data, buf.len, 0))
+pub fn (c TcpConn) read_into(mut buf []byte) ?int {
+	res := C.recv(c.sock.handle, buf.data, buf.len, 0)
+
+	if res >= 0 {
+		return res
+	}
+
+	match error_code() {
+		error_ewouldblock {
+			c.wait_for_read()?
+			// If we get here then we have something to read
+			// So this should be non-recursive
+			return c.read_into(mut buf)
+		}
+		else {
+			return err_read_timed_out
+		}
+	}
+}
+
+pub fn (c TcpConn) read() ?[]byte {
+	buf := []byte { len: 1024 }
+	read := c.read_into(buf)?
+	return buf[..read]
+}
+
+pub fn (c TcpConn) read_deadline() ?time.Time {
+	if c.read_deadline.unix == 0 {
+		return c.read_deadline
+	}
+	return none
+}
+
+pub fn (mut c TcpConn) set_read_deadline(deadline time.Time) {
+	if c.read_deadline.unix == 0 {
+		c.has_read_deadline = true
+		c.read_deadline = deadline
+		return
+	}
+	c.has_read_deadline = false
+}
+
+pub fn (c TcpConn) write_deadline() ?time.Time {
+	if c.write_deadline.unix == 0 {
+		return c.write_deadline
+	}
+	return none
+}
+
+pub fn (mut c TcpConn) set_write_deadline(deadline time.Time) {
+	if c.write_deadline.unix == 0 {
+		c.has_write_deadline = true
+		c.write_deadline = deadline
+		return
+	}
+	c.has_write_deadline = false
+}
+
+pub fn (c TcpConn) read_timeout() time.Duration {
+	return c.read_timeout
+}
+
+pub fn(mut c TcpConn) set_read_timeout(t time.Duration) {
+	c.read_timeout = t
+}
+
+pub fn (c TcpConn) write_timeout() time.Duration {
+	return c.write_timeout
+}
+
+pub fn (mut c TcpConn) set_write_timeout(t time.Duration) {
+	c.write_timeout = t
+}
+
+pub fn (c TcpConn) wait_for_read() ? {
+	if !c.has_read_deadline {
+		if c.read_timeout < 0 {
+			return err_read_timed_out
+		}
+		ready :=  c.sock.@select(.read, c.read_timeout)?
+		if ready {
+			return none
+		}
+		return err_read_timed_out
+	}
+	// Convert the deadline into a timeout
+	// and use that
+	timeout := c.read_deadline.unix - time.now().unix
+	if timeout < 0 {
+		return err_read_timed_out
+	}
+	ready :=  c.sock.@select(.read, timeout)?
+	if ready {
+		return none
+	}
+	return err_read_timed_out
+}
+
+pub fn (c TcpConn) wait_for_write() ? {
+	if !c.has_write_deadline {
+		if c.write_timeout < 0 {
+			return err_write_timed_out
+		}
+		ready := c.sock.@select(.write, c.write_timeout)?
+		if ready {
+			return none
+		}
+		return err_write_timed_out
+	}
+	// Convert the deadline into a timeout
+	// and use that
+	timeout := c.write_deadline.unix - time.now().unix
+	if timeout < 0 {
+		return err_write_timed_out
+	}
+	
+	ready := c.sock.@select(.write, timeout)?
+	if ready {
+		return none
+	}
+	return err_write_timed_out
 }
 
 pub struct TcpListener {
@@ -87,6 +226,7 @@ pub fn (l TcpListener) accept() ?TcpConn {
 
 	return TcpConn{sock: new_sock}
 }
+
 pub fn (c TcpListener) close() ? {
 	c.sock.close()?
 	return none
@@ -107,7 +247,16 @@ fn new_tcp_socket() ?TcpSocket {
 	s := TcpSocket {
 		handle: sockfd
 	}
+	
 	s.set_option_bool(.reuse_addr, true)?
+
+	$if windows {
+		t := true
+		socket_error(C.ioctlsocket(sockfd, fionbio, &t))?
+	} $else {
+		socket_error(C.fnctl(sockfd, C.F_SETFD, C.O_NONBLOCK))
+	}
+
 	return s
 }
 
@@ -138,10 +287,73 @@ fn (s TcpSocket) close() ? {
 	return none
 }
 
+struct SelectResult {
+	read bool
+	write bool
+	except bool
+}
+
+enum Select {
+	read write except
+}
+
+fn (s TcpSocket) @select(test Select, timeout time.Duration) ?bool {
+	set := C.fd_set{}
+	C.FD_SET(s.handle, &set)
+
+	seconds := timeout.milliseconds() / 1000
+	microseconds := timeout - (seconds * time.second)
+
+	timeval_timeout := C.timeval{
+		tv_sec: u64(seconds)
+		tv_usec: u64(microseconds)
+	}
+
+	match test {
+		.read {
+			socket_error(C.@select(0, &set, C.NULL, C.NULL, &timeval_timeout))?
+		}
+		.write {
+			socket_error(C.@select(0, C.NULL, &set, C.NULL, &timeval_timeout))?
+		}
+		.except {
+			socket_error(C.@select(0, C.NULL, C.NULL, &set, &timeval_timeout))?
+		}
+	}
+
+	return set.fd_count == 1
+}
+
+const (
+	connect_timeout = 20 * time.second
+)
+
 fn (s TcpSocket) connect(a string) ? {
 	addr := resolve_addr(a, .inet, .tcp)?
+	
+	res := C.connect(s.handle, addr.info.ai_addr, addr.info.ai_addrlen)
 
-	socket_error(C.connect(s.handle, addr.info.ai_addr, addr.info.ai_addrlen))?
+	if res == 0 {
+		return none
+	}
+
+	errcode := error_code()
+
+	if errcode == error_ewouldblock {
+		write_result := s.@select(.write, connect_timeout)?
+		if write_result {
+			// succeeded
+			return none
+		}
+
+		except_result := s.@select(.except, connect_timeout)?
+		if except_result {
+			return err_connect_failed
+		}
+
+		// otherwise we timed out
+		return err_connect_timed_out
+	}
 
 	return none
 }

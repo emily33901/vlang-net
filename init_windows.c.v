@@ -16,6 +16,10 @@ mut:
 }
 
 const (
+	fionbio = C.FIONBIO
+)
+
+const (
 	msg_nosignal = 0
 )
 

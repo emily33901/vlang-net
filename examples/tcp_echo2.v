@@ -1,8 +1,9 @@
-module net
+module main
 
 import time
+import emily33901.net
 
-fn handle_conn(mut c TcpConn) {
+fn handle_conn(mut c net.TcpConn) {
 	// arbitrary timeouts to ensure that it doesnt
 	// instantly throw its hands in the air and give up
 	c.set_read_timeout(10 * time.second)
@@ -21,9 +22,9 @@ fn handle_conn(mut c TcpConn) {
 	}
 }
 
-fn echo_server(l TcpListener) ? {
+fn echo_server(l net.TcpListener) ? {
 	for {
-		mut new_conn := l.accept()?
+		mut new_conn := l.accept() or { continue }
 		go handle_conn(mut new_conn)
 	}
 
@@ -31,8 +32,8 @@ fn echo_server(l TcpListener) ? {
 }
 
 fn echo() ? {
-	mut c := dial_tcp('127.0.0.1:30000')?
-	defer { c.close() or {} }
+	mut c := net.dial_tcp('127.0.0.1:30000')?
+	defer { c.close() or { } }
 	
 	// arbitrary timeouts to ensure that it doesnt
 	// instantly throw its hands in the air and give up
@@ -55,22 +56,26 @@ fn echo() ? {
 
 	println('Got "${string(buf)}"')
 
+	c.close()?
+
 	return none
 }
 
-fn test_tcp() {
+fn main() {
 	// Make sure that net is inited
 	// this is probably a V bug becuase this isnt necessary in a real program
-	init()
-	l := listen_tcp(30000) or {
-		panic(err)
+	// net.init()
+	l := net.listen_tcp(30000) or {
+		println(err)
+		assert false
+		panic('')
 	}
 
 	go echo_server(l)
 	echo() or {
-		panic(err)
+		println(err)
+		assert false
 	}
 
-	l.close() or {
-	}
+	l.close() or { }
 }

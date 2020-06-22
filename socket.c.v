@@ -68,3 +68,13 @@ fn C.getsockname() int
 // defined in builtin
 // fn C.read() int
 // fn C.close() int
+
+fn C.ioctlsocket() int
+fn C.fnctl() int
+
+fn C.@select() int
+fn C.FD_SET()
+struct C.fd_set { 
+pub:
+	fd_count u32
+}

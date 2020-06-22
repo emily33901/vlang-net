@@ -824,3 +824,7 @@ pub enum WsaError {
 pub fn wsa_error(code int) WsaError {
 	return WsaError(code)
 }
+
+const (
+	error_ewouldblock = WsaError.wsaewouldblock
+)

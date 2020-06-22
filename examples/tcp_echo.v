@@ -1,17 +1,26 @@
 module main
 
 import emily33901.net
+import os
 
 fn handle_conn(c net.TcpConn) {
 	for {
 		buf := []byte{ len: 100, init: 0 }
-		read := c.read(buf) or {
-			println('Server: connection dropped')
+		read := c.read_into(buf) or {
+			match errcode {
+				// TODO: replace when constant eval bug fixed
+				net.err_read_timed_out_code {
+					continue
+				}
+				else {
+					println('Server: connection dropped $err')
+				}
+			}
 			return
 		}
 
 		c.write(buf[..read]) or {
-			println('Server: connection dropped')
+			println('Server: connection dropped $err')
 			return
 		}
 	}
@@ -29,25 +38,36 @@ fn echo_server(l net.TcpListener) ? {
 	return none
 }
 
-fn echo() ? {
-	c := net.dial_tcp('127.0.0.1:30000')?
-	defer { c.close()? }
+fn echo(c net.TcpConn) ? {
+	println('Type and see it echoed by a local listen server!')
 
-	data := 'Hello from emily33901.net!'
-	as_bytes := data.bytes()
+	for {
+		data := os.get_line()
+		as_bytes := data.bytes()
+		c.write(as_bytes)?
 
-	c.write(as_bytes)?
+		if data.len == 0 { continue }
 
-	buf := []byte{ len: 100, init: 0 }
-	read := c.read(buf)?
+		mut read := 0
+		mut buf := []byte{ len: as_bytes.len+1, init: 0 }
 
-	assert read == data.len
+		for {
+			read = c.read_into(mut buf) or {
+				match errcode {
+					// TODO: replace when constant eval bug fixed
+					9 {
+						continue
+					}
+					else {}
+				}
+				return none
+			}
+			break
+		}
+		assert read == as_bytes.len
 
-	for i := 0; i < read; i++ {
-		assert buf[i] == data[i]
+		println('> ${string(buf)}')
 	}
-
-	println('Got "${string(buf)}"')
 
 	return none
 }
@@ -58,7 +78,11 @@ fn main() {
 	l := net.listen_tcp(30000)?
 
 	go echo_server(l)
-	echo()?
+
+	c := net.dial_tcp('127.0.0.1:30000')?
+	defer { c.close()? }
+
+	echo(c)?
 
 	l.close() or {
 		assert false

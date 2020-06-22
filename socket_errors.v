@@ -9,9 +9,37 @@ const (
 	err_invalid_port = error_with_code('', socket_errors_base+4)
 	err_port_out_of_range = error_with_code('', socket_errors_base+5)
 	err_no_udp_remote = error_with_code('', socket_errors_base+6)
+	err_connect_failed = error_with_code('net.tcp: connect failed', socket_errors_base+7)
+	err_connect_timed_out = error_with_code('net.tcp: connect timed out', socket_errors_base+8)
+	err_read_timed_out = error_with_code('net.tcp: read timed out', socket_errors_base+9)
+	err_read_timed_out_code = socket_errors_base+9
+	err_write_timed_out = error_with_code('net.tcp: write timed out', socket_errors_base+10)
+	err_write_timed_out_code = socket_errors_base+10
 )
 
+fn error_code() int {
+	$if windows {
+		return C.WSAGetLastError()
+	} $else {
+		println('WARN: error_code() not implemented for this platform')
+	}
+}
+
 pub fn socket_error(potential_code int) ?int {
+	$if windows {
+		if potential_code < 0 {
+			last_error := wsa_error(C.WSAGetLastError())
+			return error_with_code('socket error: $last_error (from $potential_code)', last_error)
+		}
+	} 
+	$else {
+		println('WARN: socket_error() not implemented for this platform')
+	}
+
+	return potential_code
+}
+
+pub fn error_if_socket_error(potential_code int) ?int {
 	$if windows {
 		if potential_code < 0 {
 			last_error := wsa_error(C.WSAGetLastError())
