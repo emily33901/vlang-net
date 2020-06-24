@@ -48,7 +48,20 @@ pub fn (c TcpConn) write(bytes []byte) ? {
 		for total_sent < bytes.len {
 			ptr := ptr_base + total_sent
 			remaining := bytes.len - total_sent
-			sent := socket_error(C.send(c.sock.handle, ptr, remaining, msg_nosignal))?
+			mut sent := C.send(c.sock.handle, ptr, remaining, msg_nosignal)
+
+			if sent < 0 {
+				code := error_code()
+				match code {
+					error_ewouldblock {
+						c.wait_for_write()?
+						sent = socket_error(C.send(c.sock.handle, ptr, remaining, msg_nosignal))?
+					}
+					else {
+						wrap_error(code)?
+					}
+				}
+			}
 			total_sent += sent
 		}
 	}
@@ -62,15 +75,14 @@ pub fn (c TcpConn) read_into(mut buf []byte) ?int {
 		return res
 	}
 
-	match error_code() {
+	code := error_code()
+	match code {
 		error_ewouldblock {
 			c.wait_for_read()?
-			// If we get here then we have something to read
-			// So this should be non-recursive
-			return c.read_into(mut buf)
+			return socket_error(C.recv(c.sock.handle, buf.data, buf.len, 0))
 		}
 		else {
-			return err_read_timed_out
+			wrap_error(code)?
 		}
 	}
 }
@@ -130,52 +142,11 @@ pub fn (mut c TcpConn) set_write_timeout(t time.Duration) {
 }
 
 pub fn (c TcpConn) wait_for_read() ? {
-	if !c.has_read_deadline {
-		if c.read_timeout < 0 {
-			return err_read_timed_out
-		}
-		ready :=  c.sock.@select(.read, c.read_timeout)?
-		if ready {
-			return none
-		}
-		return err_read_timed_out
-	}
-	// Convert the deadline into a timeout
-	// and use that
-	timeout := c.read_deadline.unix - time.now().unix
-	if timeout < 0 {
-		return err_read_timed_out
-	}
-	ready :=  c.sock.@select(.read, timeout)?
-	if ready {
-		return none
-	}
-	return err_read_timed_out
+	return wait_for_read(c.sock.handle, c.read_deadline, c.read_timeout)
 }
 
 pub fn (c TcpConn) wait_for_write() ? {
-	if !c.has_write_deadline {
-		if c.write_timeout < 0 {
-			return err_write_timed_out
-		}
-		ready := c.sock.@select(.write, c.write_timeout)?
-		if ready {
-			return none
-		}
-		return err_write_timed_out
-	}
-	// Convert the deadline into a timeout
-	// and use that
-	timeout := c.write_deadline.unix - time.now().unix
-	if timeout < 0 {
-		return err_write_timed_out
-	}
-	
-	ready := c.sock.@select(.write, timeout)?
-	if ready {
-		return none
-	}
-	return err_write_timed_out
+	return wait_for_write(c.sock.handle, c.write_deadline, c.write_timeout)
 }
 
 pub struct TcpListener {
@@ -238,25 +209,17 @@ pub:
 }
 
 fn new_tcp_socket() ?TcpSocket {
-	sockfd := C.socket(SocketFamily.inet, SocketType.tcp, 0)
-
-	if sockfd == -1 {
-		socket_error(sockfd)?
-	}
-
+	sockfd := socket_error(C.socket(SocketFamily.inet, SocketType.tcp, 0))?
 	s := TcpSocket {
 		handle: sockfd
 	}
-	
 	s.set_option_bool(.reuse_addr, true)?
-
 	$if windows {
 		t := true
 		socket_error(C.ioctlsocket(sockfd, fionbio, &t))?
 	} $else {
 		socket_error(C.fnctl(sockfd, C.F_SETFD, C.O_NONBLOCK))
 	}
-
 	return s
 }
 
@@ -276,52 +239,11 @@ pub fn (s TcpSocket) set_option_bool(opt SocketOption, value bool) ? {
 }
 
 fn (s TcpSocket) close() ? {
-	$if windows {
-		C.shutdown(s.handle, C.SD_BOTH)
-		socket_error(C.closesocket(s.handle))?
-	} $else {
-		C.shutdown(s.handle, C.SHUT_RDWR)
-		socket_error(C.close(s.handle))?
-	}
-
-	return none
-}
-
-struct SelectResult {
-	read bool
-	write bool
-	except bool
-}
-
-enum Select {
-	read write except
+	return shutdown(s.handle)
 }
 
 fn (s TcpSocket) @select(test Select, timeout time.Duration) ?bool {
-	set := C.fd_set{}
-	C.FD_SET(s.handle, &set)
-
-	seconds := timeout.milliseconds() / 1000
-	microseconds := timeout - (seconds * time.second)
-
-	timeval_timeout := C.timeval{
-		tv_sec: u64(seconds)
-		tv_usec: u64(microseconds)
-	}
-
-	match test {
-		.read {
-			socket_error(C.@select(0, &set, C.NULL, C.NULL, &timeval_timeout))?
-		}
-		.write {
-			socket_error(C.@select(0, C.NULL, &set, C.NULL, &timeval_timeout))?
-		}
-		.except {
-			socket_error(C.@select(0, C.NULL, C.NULL, &set, &timeval_timeout))?
-		}
-	}
-
-	return set.fd_count == 1
+	return @select(s.handle, test, timeout)
 }
 
 const (
@@ -345,15 +267,12 @@ fn (s TcpSocket) connect(a string) ? {
 			// succeeded
 			return none
 		}
-
 		except_result := s.@select(.except, connect_timeout)?
 		if except_result {
 			return err_connect_failed
 		}
-
 		// otherwise we timed out
 		return err_connect_timed_out
 	}
-
 	return none
 }

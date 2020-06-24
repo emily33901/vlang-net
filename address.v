@@ -5,6 +5,10 @@ pub struct Addr {
 	addr string
 }
 
+pub fn (a Addr) str() string {
+	return a.addr
+}
+
 pub fn resolve_addr(addr string, family SocketFamily, typ SocketType) ?Addr {
 	address, port := split_address(addr)?
 
@@ -21,9 +25,9 @@ pub fn resolve_addr(addr string, family SocketFamily, typ SocketType) ?Addr {
 
 	sport := '$port'
 
-	// this uses '0-' because getaddrinfo returns 0 on success
-	// and everything else is an error
-	socket_error(C.getaddrinfo(address.str, sport.str, &hints, &info))?
+	// TODO this is not technically correct because socket_error will then
+	// try to get the last errno which wont(?) be correct
+	socket_error(0-C.getaddrinfo(address.str, sport.str, &hints, &info))?
 
 	return Addr {
 		info

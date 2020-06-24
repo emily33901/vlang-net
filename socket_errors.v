@@ -29,7 +29,7 @@ pub fn socket_error(potential_code int) ?int {
 	$if windows {
 		if potential_code < 0 {
 			last_error := wsa_error(C.WSAGetLastError())
-			return error_with_code('socket error: $last_error (from $potential_code)', last_error)
+			return error_with_code('socket error: $last_error', last_error)
 		}
 	} 
 	$else {
@@ -39,16 +39,11 @@ pub fn socket_error(potential_code int) ?int {
 	return potential_code
 }
 
-pub fn error_if_socket_error(potential_code int) ?int {
+pub fn wrap_error(error_code int) ? {
 	$if windows {
-		if potential_code < 0 {
-			last_error := wsa_error(C.WSAGetLastError())
-			return error_with_code('socket error: $last_error (from $potential_code)', last_error)
-		}
+		return error_with_code('socket error: $error_code', error_code)
 	} 
 	$else {
 		println('WARN: socket_error() not implemented for this platform')
 	}
-
-	return potential_code
 }
