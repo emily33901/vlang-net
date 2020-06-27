@@ -3,7 +3,8 @@ module main
 import time
 import emily33901.net
 
-fn handle_conn(mut c net.TcpConn) {
+fn handle_conn(_c net.TcpConn) {
+	mut c := _c
 	// arbitrary timeouts to ensure that it doesnt
 	// instantly throw its hands in the air and give up
 	c.set_read_timeout(10 * time.second)
@@ -25,7 +26,7 @@ fn handle_conn(mut c net.TcpConn) {
 fn echo_server(l net.TcpListener) ? {
 	for {
 		mut new_conn := l.accept() or { continue }
-		go handle_conn(mut new_conn)
+		go handle_conn(new_conn)
 	}
 
 	return none

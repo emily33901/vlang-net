@@ -27,11 +27,6 @@ mut:
 	ai_next      voidptr
 }
 
-fn (info C.addrinfo) str() string {
-	// TODO
-	return ''
-}
-
 struct C.sockaddr_storage {
 }
 
