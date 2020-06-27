@@ -1,12 +1,14 @@
 module net
 
 pub struct Addr {
-	info &C.addrinfo
-	addr string
+	addr C.sockaddr
+	len int
+	saddr string
+	port u16
 }
 
 pub fn (a Addr) str() string {
-	return a.addr
+	return a.saddr
 }
 
 pub fn resolve_addr(addr string, family SocketFamily, typ SocketType) ?Addr {
@@ -30,7 +32,9 @@ pub fn resolve_addr(addr string, family SocketFamily, typ SocketType) ?Addr {
 	socket_error(0-C.getaddrinfo(address.str, sport.str, &hints, &info))?
 
 	return Addr {
-		info
-		addr
+		addr: *info.ai_addr
+		len: info.ai_addrlen
+		saddr: addr
+		port: port
 	}
 }

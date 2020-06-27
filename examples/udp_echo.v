@@ -3,7 +3,8 @@ module main
 import time
 import emily33901.net
 
-fn handle_conn(mut c net.UdpConn) {
+fn handle_conn(_c net.UdpConn) {
+	mut c := _c
 	// arbitrary timeouts to ensure that it doesnt
 	// instantly throw its hands in the air and give up
 	c.set_read_timeout(10 * time.second)
@@ -21,8 +22,8 @@ fn handle_conn(mut c net.UdpConn) {
 	}
 }
 
-fn echo_server(mut l net.UdpConn) {
-	handle_conn(mut l)
+fn echo_server(l net.UdpConn) {
+	handle_conn(l)
 }
 
 fn echo() ? {
@@ -43,7 +44,8 @@ fn echo() ? {
 	read, addr := c.read_into(mut buf)?
 
 	assert read == data.len
-	assert addr.str() == '127.0.0.1:30001'
+
+	// assert addr.str() == '127.0.0.1:30001'
 
 	for i := 0; i < read; i++ {
 		assert buf[i] == data[i]
@@ -66,7 +68,7 @@ fn main() {
 		panic('')
 	}
 
-	go echo_server(mut l)
+	go echo_server(l)
 	echo() or {
 		println(err)
 		assert false

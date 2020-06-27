@@ -253,7 +253,7 @@ const (
 fn (s TcpSocket) connect(a string) ? {
 	addr := resolve_addr(a, .inet, .tcp)?
 	
-	res := C.connect(s.handle, addr.info.ai_addr, addr.info.ai_addrlen)
+	res := C.connect(s.handle, &addr.addr, addr.len)
 
 	if res == 0 {
 		return none
