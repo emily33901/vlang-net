@@ -74,12 +74,14 @@ pub fn (c UdpConn) write_to(addr Addr, buf []byte) ? {
 // read_into reads from the socket into buf up to buf.len returning the number of bytes read
 pub fn (c UdpConn) read_into(mut buf []byte) ?(int, Addr) {
 	mut addr_from := C.sockaddr{}
-	len := sizeof(C.sockaddr_in)
+	len := sizeof(C.sockaddr)
 
 	res := C.recvfrom(c.sock.handle, buf.data, buf.len, 0, &addr_from, &len)
 
 	if res >= 0 {
-		return res, Addr {addr_from, int(len), 'TODO', 0}
+		port_from := &C.sockaddr_in(&addr_from).sin_port
+		addr := new_addr(addr_from, '', port_from)?
+		return res, addr
 	}
 
 	code := error_code()
@@ -87,7 +89,10 @@ pub fn (c UdpConn) read_into(mut buf []byte) ?(int, Addr) {
 		error_ewouldblock {
 			c.wait_for_read()?
 			res2 := socket_error(C.recvfrom(c.sock.handle, buf.data, buf.len, 0, &addr_from, &len))?
-			return res2, Addr {addr_from, int(len), 'TODO', 0}
+
+			port_from := (&C.sockaddr_in(&addr_from)).sin_port
+			addr := new_addr(addr_from, '', port_from)?
+			return res2, addr
 		}
 		else {
 			wrap_error(code)?
@@ -158,8 +163,7 @@ pub fn (c UdpConn) wait_for_write() ? {
 }
 
 pub fn (c UdpConn) close() ? {
-	c.sock.close()?
-	return none
+	return c.sock.close()
 }
 
 pub fn listen_udp(port int) ?UdpConn {
@@ -187,7 +191,7 @@ fn new_udp_socket(local_port int) ?UdpSocket {
 		t := true
 		socket_error(C.ioctlsocket(sockfd, fionbio, &t))?
 	} $else {
-		socket_error(C.fnctl(sockfd, C.F_SETFD, C.O_NONBLOCK))
+		socket_error(C.fcntl(sockfd, C.F_SETFD, C.O_NONBLOCK))
 	}
 
 	// In UDP we always have to bind to a port
@@ -226,14 +230,7 @@ pub fn (s UdpSocket) set_option_bool(opt SocketOption, value bool) ? {
 }
 
 fn (s UdpSocket) close() ? {
-	$if windows {
-		C.shutdown(s.handle, C.SD_BOTH)
-		socket_error(C.closesocket(s.handle))?
-	} $else {
-		C.shutdown(s.handle, C.SHUT_RDWR)
-		socket_error(C.close(s.handle))?
-	}
-	return none
+	return shutdown(s.handle)
 }
 
 fn (s UdpSocket) @select(test Select, timeout time.Duration) ?bool {

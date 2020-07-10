@@ -9,8 +9,8 @@ fn handle_conn(_c net.UdpConn) {
 	// instantly throw its hands in the air and give up
 	c.set_read_timeout(10 * time.second)
 	c.set_write_timeout(10 * time.second)
+	buf := []byte{ len: 100, init: 0 }
 	for {
-		buf := []byte{ len: 100, init: 0 }
 		read, addr := c.read_into(mut buf) or {
 			continue
 		}

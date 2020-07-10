@@ -1,5 +1,6 @@
 module net
 
+// WsaError is all of the socket errors that WSA provides from WSAGetLastError
 pub enum WsaError {
 	//
 	// MessageId: WSAEINTR
@@ -821,6 +822,7 @@ pub enum WsaError {
 	wsa_ipsec_name_policy_error = 11033
 }
 
+// wsa_error casts an int to its WsaError value
 pub fn wsa_error(code int) WsaError {
 	return WsaError(code)
 }
@@ -828,3 +830,39 @@ pub fn wsa_error(code int) WsaError {
 const (
 	error_ewouldblock = WsaError.wsaewouldblock
 )
+
+// Link to Winsock library
+#flag -lws2_32
+#include <winsock2.h>
+#include <Ws2tcpip.h>
+
+// Constants that windows needs
+const (
+	fionbio = C.FIONBIO
+	msg_nosignal = 0
+	wsa_v22 = 0x202 // C.MAKEWORD(2, 2)
+)
+
+// Error code returns the last socket error
+fn error_code() int {
+	return C.WSAGetLastError()
+}
+
+struct C.WSAData {
+mut:
+	wVersion u16
+	wHighVersion u16
+	szDescription [257]byte
+	szSystemStatus [129]byte
+	iMaxSockets u16
+	iMaxUdpDg u16
+	lpVendorInfo byteptr
+}
+
+fn init() {
+	mut wsadata := C.WSAData{}
+	res := C.WSAStartup(wsa_v22, &wsadata)
+	if res != 0 {
+		panic('socket: WSAStartup failed')
+	}
+}

@@ -2,6 +2,7 @@ module net
 
 import time
 
+// Shutdown shutsdown a socket and closes it
 fn shutdown(handle int) ? {
 	$if windows {
 		C.shutdown(handle, C.SD_BOTH)
@@ -14,33 +15,36 @@ fn shutdown(handle int) ? {
 	return none
 }
 
+fn C.alloca() voidptr
+
+// Select waits for an io operation (specified by parameter `test`) to be available
 fn @select(handle int, test Select, timeout time.Duration) ?bool {
 	set := C.fd_set{}
+
+	C.FD_ZERO(&set)
 	C.FD_SET(handle, &set)
 
-	seconds := timeout.milliseconds() / 1000
-	microseconds := timeout - (seconds * time.second)
-
 	timeval_timeout := C.timeval{
-		tv_sec: u64(seconds)
-		tv_usec: u64(microseconds)
+		tv_sec: u64(0)
+		tv_usec: u64(timeout.microseconds())
 	}
 
 	match test {
 		.read {
-			socket_error(C.@select(0, &set, C.NULL, C.NULL, &timeval_timeout))?
+			socket_error(C.@select(handle+1, &set, C.NULL, C.NULL, &timeval_timeout))?
 		}
 		.write {
-			socket_error(C.@select(0, C.NULL, &set, C.NULL, &timeval_timeout))?
+			socket_error(C.@select(handle+1, C.NULL, &set, C.NULL, &timeval_timeout))?
 		}
 		.except {
-			socket_error(C.@select(0, C.NULL, C.NULL, &set, &timeval_timeout))?
+			socket_error(C.@select(handle+1, C.NULL, C.NULL, &set, &timeval_timeout))?
 		}
 	}
 
-	return set.fd_count == 1
+	return C.FD_ISSET(handle, &set)
 }
 
+// wait_for_write waits for a write io operation to be available
 fn wait_for_write(handle int, 
 	deadline time.Time, 
 	timeout time.Duration) ? {
@@ -68,6 +72,7 @@ fn wait_for_write(handle int,
 	return err_write_timed_out
 }
 
+// wait_for_read waits for a read io operation to be available
 fn wait_for_read(handle int, 
 	deadline time.Time, 
 	timeout time.Duration) ? {

@@ -1,16 +1,23 @@
 module net
 
-import time
+const (
+	socket_max_port = u16(-1)
+)
 
-fn split_address(addr string) ?(string, u16) {
-	port := addr.all_after_last(':').u64()
-	address := addr.all_before_last(':')
-
-	if port < u16(-1) {
-		return address, u16(port)
+pub fn validate_port(port int) ?u16 {
+	if port <= socket_max_port {
+		return u16(port)
 	} else {
 		return err_port_out_of_range
 	}
 }
 
-fn time_opt_helper(t ?time.Time) ?time.Time { return t }
+fn split_address(addr string) ?(string, u16) {
+	port := addr.all_after_last(':').int()
+	address := addr.all_before_last(':')
+
+	p := validate_port(port)?
+	return address, p
+}
+
+

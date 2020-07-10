@@ -2,14 +2,15 @@ module main
 
 import emily33901.net
 import os
+import time
 
 fn handle_conn(c net.TcpConn) {
+	buf := []byte{ len: 100, init: 0 }
 	for {
-		buf := []byte{ len: 100, init: 0 }
 		read := c.read_into(buf) or {
 			match errcode {
 				// TODO: replace when constant eval bug fixed
-				9 {
+				net.err_read_timed_out_code {
 					continue
 				}
 				else {
@@ -29,7 +30,7 @@ fn handle_conn(c net.TcpConn) {
 fn echo_server(l net.TcpListener) ? {
 	for {
 		new_conn := l.accept() or {
-			// TODO sleep thread or yield or smth
+			time.sleep(1)
 			continue
 		}
 		go handle_conn(new_conn)

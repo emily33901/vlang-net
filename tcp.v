@@ -7,13 +7,11 @@ const (
 )
 
 pub struct TcpConn {
+pub:
 	sock TcpSocket
 
 mut:
-	has_write_deadline bool
 	write_deadline time.Time
-
-	has_read_deadline bool
 	read_deadline time.Time
 
 	read_timeout time.Duration
@@ -27,8 +25,6 @@ pub fn dial_tcp(address string) ?TcpConn {
 	return TcpConn {
 		sock: s
 		
-		has_write_deadline: false
-		has_read_deadline: false
 		read_timeout: -1
 		write_timeout: -1
 	}
@@ -54,8 +50,8 @@ pub fn (c TcpConn) write(bytes []byte) ? {
 				code := error_code()
 				match code {
 					error_ewouldblock {
-						c.wait_for_write()?
-						sent = socket_error(C.send(c.sock.handle, ptr, remaining, msg_nosignal))?
+						c.wait_for_write()
+						continue
 					}
 					else {
 						wrap_error(code)?
@@ -101,12 +97,7 @@ pub fn (c TcpConn) read_deadline() ?time.Time {
 }
 
 pub fn (mut c TcpConn) set_read_deadline(deadline time.Time) {
-	if c.read_deadline.unix == 0 {
-		c.has_read_deadline = true
-		c.read_deadline = deadline
-		return
-	}
-	c.has_read_deadline = false
+	c.read_deadline = deadline
 }
 
 pub fn (c TcpConn) write_deadline() ?time.Time {
@@ -117,12 +108,7 @@ pub fn (c TcpConn) write_deadline() ?time.Time {
 }
 
 pub fn (mut c TcpConn) set_write_deadline(deadline time.Time) {
-	if c.write_deadline.unix == 0 {
-		c.has_write_deadline = true
-		c.write_deadline = deadline
-		return
-	}
-	c.has_write_deadline = false
+	c.write_deadline = deadline
 }
 
 pub fn (c TcpConn) read_timeout() time.Duration {
@@ -141,21 +127,31 @@ pub fn (mut c TcpConn) set_write_timeout(t time.Duration) {
 	c.write_timeout = t
 }
 
+[inline]
 pub fn (c TcpConn) wait_for_read() ? {
 	return wait_for_read(c.sock.handle, c.read_deadline, c.read_timeout)
 }
 
+[inline]
 pub fn (c TcpConn) wait_for_write() ? {
 	return wait_for_write(c.sock.handle, c.write_deadline, c.write_timeout)
 }
 
+pub fn (c TcpConn) str() string {
+	return ''
+}
+
 pub struct TcpListener {
 	sock TcpSocket
+
+mut:
+	accept_timeout time.Duration
+	accept_deadline time.Time
 }
 
 pub fn listen_tcp(port int) ?TcpListener {
 	s := new_tcp_socket()?
-	if port > u16(-1) {
+	if port >= socket_max_port {
 		return err_invalid_port
 	}
 
@@ -173,6 +169,8 @@ pub fn listen_tcp(port int) ?TcpListener {
 
 	return TcpListener {
 		sock: s
+		accept_timeout: -1
+		accept_deadline: no_deadline
 	}
 }
 
@@ -185,17 +183,50 @@ pub fn (l TcpListener) accept() ?TcpConn {
 
 	// cast to correct type
 	sock_addr := &C.sockaddr(&addr)
-	new_handle := C.accept(l.sock.handle, sock_addr, &size)
-	
-	if new_handle == -1 {
-		return none
+	mut new_handle := C.accept(l.sock.handle, sock_addr, &size)
+
+	if new_handle <= 0 {
+		l.wait_for_accept()?
+
+		new_handle = C.accept(l.sock.handle, sock_addr, &size)
+		
+		if new_handle == -1 || new_handle == 0 {
+			return none
+		}
 	}
 
 	new_sock := TcpSocket {
 		handle: new_handle
 	}
 
-	return TcpConn{sock: new_sock}
+	return TcpConn{
+		sock: new_sock
+		read_timeout: -1
+		write_timeout: -1
+	}
+}
+
+pub fn (c TcpListener) accept_deadline() ?time.Time {
+	if c.accept_deadline.unix != 0 {
+		return c.accept_deadline
+	}
+	return none
+}
+
+pub fn (mut c TcpListener) set_accept_deadline(deadline time.Time) {
+	c.accept_deadline = deadline
+}
+
+pub fn (c TcpListener) accept_timeout() time.Duration {
+	return c.accept_timeout
+}
+
+pub fn(mut c TcpListener) set_accept_timeout(t time.Duration) {
+	c.accept_timeout = t
+}
+
+pub fn (c TcpListener) wait_for_accept() ? {
+	return wait_for_read(c.sock.handle, c.accept_deadline, c.accept_timeout)
 }
 
 pub fn (c TcpListener) close() ? {
@@ -218,7 +249,7 @@ fn new_tcp_socket() ?TcpSocket {
 		t := true
 		socket_error(C.ioctlsocket(sockfd, fionbio, &t))?
 	} $else {
-		socket_error(C.fnctl(sockfd, C.F_SETFD, C.O_NONBLOCK))
+		socket_error(C.fcntl(sockfd, C.F_SETFD, C.O_NONBLOCK))
 	}
 	return s
 }
@@ -238,6 +269,12 @@ pub fn (s TcpSocket) set_option_bool(opt SocketOption, value bool) ? {
 	return none
 }
 
+pub fn (s TcpSocket) set_option_int(opt SocketOption, value int) ? {
+	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &value, sizeof(int)))?
+
+	return none
+}
+
 fn (s TcpSocket) close() ? {
 	return shutdown(s.handle)
 }
@@ -247,7 +284,7 @@ fn (s TcpSocket) @select(test Select, timeout time.Duration) ?bool {
 }
 
 const (
-	connect_timeout = 20 * time.second
+	connect_timeout = 5 * time.second
 )
 
 fn (s TcpSocket) connect(a string) ? {
@@ -274,5 +311,8 @@ fn (s TcpSocket) connect(a string) ? {
 		// otherwise we timed out
 		return err_connect_timed_out
 	}
+
+	wrap_error(errcode)?
+
 	return none
 }

@@ -36,10 +36,11 @@ fn echo() ? {
 	c.write(as_bytes)?
 
 	buf := []byte{ len: 100, init: 0 }
-	read, _ := c.read_into(mut buf)?
+	read, addr := c.read_into(mut buf)?
 
 	assert read == data.len
-	// assert addr.str() == '127.0.0.1:30001'
+	println(addr.str())
+	assert addr.str() == '127.0.0.1:30001'
 
 	for i := 0; i < read; i++ {
 		assert buf[i] == data[i]

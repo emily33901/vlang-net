@@ -1,8 +1,9 @@
 # net
-This module is intended to replace the net module in vlib - it is the Go sockets api we have all been waiting for. Its currently a work in progress but TCP is already up and running and UDP is in the works.
+This module is intended to replace the net module in vlib - it is the Go sockets api we have all been waiting for. Its currently a work in progress however there is full support for TCP and UDP, timeouts and deadlines.
 
 # Examples
-```go
+```v
+// Simple raw HTTP head request
 import emily33901.net
 import time
 
@@ -19,4 +20,3 @@ println(tos(result.data, result.len).clone())
 ```
 
 You can find some more complex examples in [examples/](https://github.com/emily33901/vlang-net/tree/master/examples)
-

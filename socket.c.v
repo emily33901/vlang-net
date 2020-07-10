@@ -1,4 +1,17 @@
-module net 
+module net
+
+enum Select {
+	read write except
+}
+
+pub enum SocketType {
+	udp = C.SOCK_DGRAM
+	tcp = C.SOCK_STREAM
+}
+
+pub enum SocketFamily {
+	inet = C. AF_INET
+}
 
 struct C.in_addr {
 mut:
@@ -14,6 +27,7 @@ mut:
 	sin_port   int
 	sin_addr   C.in_addr
 }
+
 
 struct C.addrinfo {
 mut:
@@ -58,6 +72,8 @@ fn C.shutdown() int
 
 fn C.ntohs() int
 
+fn C.inet_ntop() int
+
 fn C.getsockname() int
 
 // defined in builtin
@@ -65,11 +81,12 @@ fn C.getsockname() int
 // fn C.close() int
 
 fn C.ioctlsocket() int
-fn C.fnctl() int
+fn C.fcntl() int
 
 fn C.@select() int
+fn C.FD_ZERO()
 fn C.FD_SET()
-struct C.fd_set { 
-pub:
-	fd_count u32
-}
+fn C.FD_ISSET() bool
+
+[typedef]
+struct C.fd_set {}

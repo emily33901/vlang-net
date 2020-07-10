@@ -1,10 +1,14 @@
 module net
 
-#include <sys/socket.h>
 #include <unistd.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/select.h>
+#include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netdb.h>
 #include <errno.h>
+
 fn error_code() int {
 	return C.errno
 }
@@ -17,7 +21,7 @@ pub const (
 )
 
 const (
-	so_accept_conn = C.SO_ACCEPT_CONN
+	error_ewouldblock = C.EWOULDBLOCK
 )
 
 #flag solaris -lsocket
