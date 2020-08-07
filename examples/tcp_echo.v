@@ -9,8 +9,7 @@ fn handle_conn(c net.TcpConn) {
 	for {
 		read := c.read_into(buf) or {
 			match errcode {
-				// TODO: replace when constant eval bug fixed
-				net.err_read_timed_out_code {
+				net.err_timed_out_code {
 					continue
 				}
 				else {
@@ -55,8 +54,7 @@ fn echo(c net.TcpConn) ? {
 		for {
 			read = c.read_into(mut buf) or {
 				match errcode {
-					// TODO: replace when constant eval bug fixed
-					9 {
+					net.err_timed_out_code {
 						continue
 					}
 					else {}

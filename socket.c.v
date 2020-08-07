@@ -1,14 +1,17 @@
 module net
 
+// Select represents a select operation
 enum Select {
 	read write except
 }
 
+// SocketType are the available sockets
 pub enum SocketType {
 	udp = C.SOCK_DGRAM
 	tcp = C.SOCK_STREAM
 }
 
+// SocketFamily are the available address families
 pub enum SocketFamily {
 	inet = C. AF_INET
 }

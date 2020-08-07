@@ -22,7 +22,10 @@ fn new_addr(addr C.sockaddr, _saddr string, port int) ?Addr {
 		// Convert to string representation
 		buf := []byte{ len: max_ipv4_addr_len, init: 0 }
 		$if windows {
-			socket_error(C.inet_ntop(SocketFamily.inet, &addr, buf.data, buf.len))?
+			res := C.inet_ntop(SocketFamily.inet, &addr, buf.data, buf.len)
+			if res == 0 {
+				socket_error(-1)?
+			}
 		} $else {
 			res := C.inet_ntop(SocketFamily.inet, &addr, buf.data, buf.len)
 			if res == 0 {

@@ -2,10 +2,6 @@ module net
 
 import time
 
-const (
-	no_deadline = time.Time{unix: 0}
-)
-
 pub struct TcpConn {
 pub:
 	sock TcpSocket
@@ -24,7 +20,7 @@ pub fn dial_tcp(address string) ?TcpConn {
 
 	return TcpConn {
 		sock: s
-		
+
 		read_timeout: -1
 		write_timeout: -1
 	}
@@ -138,7 +134,8 @@ pub fn (c TcpConn) wait_for_write() ? {
 }
 
 pub fn (c TcpConn) str() string {
-	return ''
+	// TODO
+	return 'TcpConn'
 }
 
 pub struct TcpListener {
@@ -151,9 +148,8 @@ mut:
 
 pub fn listen_tcp(port int) ?TcpListener {
 	s := new_tcp_socket()?
-	if port >= socket_max_port {
-		return err_invalid_port
-	}
+
+	validate_port(port)?
 
 	mut addr := C.sockaddr_in{}
 	addr.sin_family = SocketFamily.inet
@@ -189,7 +185,7 @@ pub fn (l TcpListener) accept() ?TcpConn {
 		l.wait_for_accept()?
 
 		new_handle = C.accept(l.sock.handle, sock_addr, &size)
-		
+
 		if new_handle == -1 || new_handle == 0 {
 			return none
 		}
@@ -289,7 +285,7 @@ const (
 
 fn (s TcpSocket) connect(a string) ? {
 	addr := resolve_addr(a, .inet, .tcp)?
-	
+
 	res := C.connect(s.handle, &addr.addr, addr.len)
 
 	if res == 0 {
@@ -312,7 +308,5 @@ fn (s TcpSocket) connect(a string) ? {
 		return err_connect_timed_out
 	}
 
-	wrap_error(errcode)?
-
-	return none
+	return wrap_error(errcode)
 }

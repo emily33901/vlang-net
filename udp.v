@@ -6,10 +6,7 @@ pub struct UdpConn {
 	sock UdpSocket
 
 mut:
-	has_write_deadline bool
 	write_deadline time.Time
-
-	has_read_deadline bool
 	read_deadline time.Time
 
 	read_timeout time.Duration
@@ -79,7 +76,7 @@ pub fn (c UdpConn) read_into(mut buf []byte) ?(int, Addr) {
 	res := C.recvfrom(c.sock.handle, buf.data, buf.len, 0, &addr_from, &len)
 
 	if res >= 0 {
-		port_from := &C.sockaddr_in(&addr_from).sin_port
+		port_from := (&C.sockaddr_in(&addr_from)).sin_port
 		addr := new_addr(addr_from, '', port_from)?
 		return res, addr
 	}
@@ -98,6 +95,8 @@ pub fn (c UdpConn) read_into(mut buf []byte) ?(int, Addr) {
 			wrap_error(code)?
 		}
 	}
+
+	return none
 }
 
 pub fn (c UdpConn) read() ?([]byte, Addr) {
@@ -114,12 +113,7 @@ pub fn (c UdpConn) read_deadline() ?time.Time {
 }
 
 pub fn (mut c UdpConn) set_read_deadline(deadline time.Time) {
-	if c.read_deadline.unix == 0 {
-		c.has_read_deadline = true
-		c.read_deadline = deadline
-		return
-	}
-	c.has_read_deadline = false
+	c.read_deadline = deadline
 }
 
 pub fn (c UdpConn) write_deadline() ?time.Time {
@@ -130,12 +124,7 @@ pub fn (c UdpConn) write_deadline() ?time.Time {
 }
 
 pub fn (mut c UdpConn) set_write_deadline(deadline time.Time) {
-	if c.write_deadline.unix == 0 {
-		c.has_write_deadline = true
-		c.write_deadline = deadline
-		return
-	}
-	c.has_write_deadline = false
+	c.write_deadline = deadline
 }
 
 pub fn (c UdpConn) read_timeout() time.Duration {
@@ -154,12 +143,19 @@ pub fn (mut c UdpConn) set_write_timeout(t time.Duration) {
 	c.write_timeout = t
 }
 
+[inline]
 pub fn (c UdpConn) wait_for_read() ? {
 	return wait_for_read(c.sock.handle, c.read_deadline, c.read_timeout)
 }
 
+[inline]
 pub fn (c UdpConn) wait_for_write() ? {
 	return wait_for_write(c.sock.handle, c.write_deadline, c.write_timeout)
+}
+
+pub fn (c UdpConn) str() string {
+	// TODO
+	return 'UdpConn'
 }
 
 pub fn (c UdpConn) close() ? {
@@ -195,21 +191,19 @@ fn new_udp_socket(local_port int) ?UdpSocket {
 	}
 
 	// In UDP we always have to bind to a port
-	if local_port > u16(-1) {
-		return err_invalid_port
-	}
+	validate_port(local_port)?
 
 	mut addr := C.sockaddr_in{}
 	addr.sin_family = SocketFamily.inet
 	addr.sin_port = C.htons(local_port)
 	addr.sin_addr.s_addr = C.htonl(C.INADDR_ANY)
-	size := sizeof(C.sockaddr_in)	
+	size := sizeof(C.sockaddr_in)
 
 	// cast to the correct type
 	sockaddr := &C.sockaddr(&addr)
 
 	socket_error(C.bind(s.handle, sockaddr, size))?
-	
+
 	return s
 }
 

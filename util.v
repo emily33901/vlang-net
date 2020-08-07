@@ -4,6 +4,8 @@ const (
 	socket_max_port = u16(-1)
 )
 
+// validate_port checks whether a port is valid
+// and returns the port or an error
 pub fn validate_port(port int) ?u16 {
 	if port <= socket_max_port {
 		return u16(port)
@@ -19,5 +21,3 @@ fn split_address(addr string) ?(string, u16) {
 	p := validate_port(port)?
 	return address, p
 }
-
-
